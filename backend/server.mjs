@@ -24,55 +24,77 @@ const locations = [
   { id: 'goregaon-hub', name: 'Goregaon Transport Hub', lat: 19.1649, lng: 72.8499 },
 ];
 
-const sharedVehicleSeeds = [
-  {
-    id: 'sh-4-a',
-    label: 'RoadGo Share 4',
-    type: '4-seater',
-    lat: 19.1318,
-    lng: 72.9148,
-    occupiedSeats: [
-      { seatId: 'B2', gender: 'male' },
-      { seatId: 'B3', gender: 'female' },
-    ],
-  },
-  {
-    id: 'sh-4-b',
-    label: 'RoadGo Share Plus',
-    type: '4-seater',
-    lat: 19.1192,
-    lng: 72.9104,
-    occupiedSeats: [{ seatId: 'B2', gender: 'female' }],
-  },
-  {
-    id: 'sh-6-a',
-    label: 'RoadGo Connect 6',
-    type: '6-seater',
-    lat: 19.129,
-    lng: 72.919,
-    occupiedSeats: [
-      { seatId: 'M1', gender: 'male' },
-      { seatId: 'M3', gender: 'male' },
-      { seatId: 'B1', gender: 'female' },
-    ],
-  },
-  {
-    id: 'sh-auto-a',
-    label: 'RoadGo AutoShare',
-    type: 'auto',
-    lat: 19.121,
-    lng: 72.903,
-    occupiedSeats: [{ seatId: 'R1', gender: 'male' }],
-  },
-  {
-    id: 'sh-auto-b',
-    label: 'RoadGo AutoShare Max',
-    type: 'auto',
-    lat: 19.135,
-    lng: 72.918,
-    occupiedSeats: [{ seatId: 'R2', gender: 'female' }],
-  },
-];
+// Vehicle seeds are generated dynamically near the user's pickup location.
+// Each offset (in degrees) keeps vehicles within ~0.8–2km of the pickup,
+// so rides always appear regardless of where the user searches.
+function generateVehicleSeeds(pickup) {
+  return [
+    {
+      id: 'sh-4-a', label: 'RoadGo Share 4', type: '4-seater',
+      lat: pickup.lat + 0.007, lng: pickup.lng + 0.003,
+      occupiedSeats: [
+        { seatId: 'B2', gender: 'male' },
+        { seatId: 'B3', gender: 'female' },
+      ],
+    },
+    {
+      id: 'sh-4-b', label: 'RoadGo Share Plus', type: '4-seater',
+      lat: pickup.lat - 0.009, lng: pickup.lng + 0.005,
+      occupiedSeats: [{ seatId: 'B2', gender: 'female' }],
+    },
+    {
+      id: 'sh-4-c', label: 'RoadGo Share Express', type: '4-seater',
+      lat: pickup.lat + 0.004, lng: pickup.lng - 0.008,
+      occupiedSeats: [], // fully empty — all seats free
+    },
+    {
+      id: 'sh-4-d', label: 'RoadGo Share Standard', type: '4-seater',
+      lat: pickup.lat - 0.014, lng: pickup.lng + 0.008,
+      occupiedSeats: [
+        { seatId: 'F1', gender: 'male' },
+        { seatId: 'B1', gender: 'male' },
+        { seatId: 'B3', gender: 'female' },
+      ],
+    },
+    {
+      id: 'sh-6-a', label: 'RoadGo Connect 6', type: '6-seater',
+      lat: pickup.lat - 0.006, lng: pickup.lng - 0.006,
+      occupiedSeats: [
+        { seatId: 'M1', gender: 'male' },
+        { seatId: 'M3', gender: 'male' },
+        { seatId: 'B1', gender: 'female' },
+      ],
+    },
+    {
+      id: 'sh-6-b', label: 'RoadGo Connect Economy', type: '6-seater',
+      lat: pickup.lat + 0.012, lng: pickup.lng - 0.002,
+      occupiedSeats: [
+        { seatId: 'M2', gender: 'female' },
+        { seatId: 'B2', gender: 'female' },
+      ],
+    },
+    {
+      id: 'sh-6-c', label: 'RoadGo Connect Max', type: '6-seater',
+      lat: pickup.lat + 0.002, lng: pickup.lng - 0.012,
+      occupiedSeats: [{ seatId: 'F1', gender: 'male' }],
+    },
+    {
+      id: 'sh-auto-a', label: 'RoadGo AutoShare', type: 'auto',
+      lat: pickup.lat - 0.003, lng: pickup.lng + 0.010,
+      occupiedSeats: [{ seatId: 'R1', gender: 'male' }],
+    },
+    {
+      id: 'sh-auto-b', label: 'RoadGo AutoShare Plus', type: 'auto',
+      lat: pickup.lat + 0.004, lng: pickup.lng + 0.007,
+      occupiedSeats: [{ seatId: 'R2', gender: 'female' }],
+    },
+    {
+      id: 'sh-auto-c', label: 'RoadGo AutoShare Max', type: 'auto',
+      lat: pickup.lat - 0.011, lng: pickup.lng - 0.004,
+      occupiedSeats: [], // empty auto
+    },
+  ];
+}
 
 const seatTemplates = {
   '4-seater': [
@@ -527,7 +549,10 @@ function buildSharedRides({ pickup, drop, travelDateTime, carType, sharingGender
   const offsets = [-24, -12, -6, 0, 8, 16, 24];
   const matching = [];
 
-  for (const seed of sharedVehicleSeeds) {
+  // Generate vehicles dynamically near this pickup — solves the 0-results bug
+  const vehicleSeeds = generateVehicleSeeds(pickup);
+
+  for (const seed of vehicleSeeds) {
     if (carType && seed.type !== carType) {
       continue;
     }

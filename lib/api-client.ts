@@ -42,6 +42,8 @@ export type RideOption = {
   etaMinutes: number;
   totalTravelMinutes?: number;
   baseFare: number;
+  fareBreakdown?: { baseFare: number; distCharge: number; timeCharge: number; surgeFactor: number };
+  routeInfo?: { distanceKm: number; durationMin: number; trafficMin: number; source: string };
   seatMap: RideSeat[] | null;
   maleOnboard?: number;
   femaleOnboard?: number;

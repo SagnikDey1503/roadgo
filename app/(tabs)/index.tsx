@@ -578,6 +578,8 @@ export default function BookScreen() {
         ) : null}
         {rides.map((option) => {
           const active = selectedRide?.rideId === option.rideId;
+          const ri = option.routeInfo;
+          const isGoogle = ri?.source === 'google-directions';
           return (
             <Pressable
               key={option.rideId}
@@ -586,6 +588,8 @@ export default function BookScreen() {
                 setSelectedRide(option);
                 setSelectedSeatId(null);
               }}>
+
+              {/* ── Row 1: Provider name + Fare + checkmark ── */}
               <View style={styles.rideTop}>
                 <View style={styles.rideTopLeft}>
                   <Text style={styles.rideProvider}>{option.provider}</Text>
@@ -593,51 +597,81 @@ export default function BookScreen() {
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{option.carType}</Text>
                     </View>
-                    <Text style={styles.rideRoute}>
-                      {option.mode === 'sharing'
-                        ? `${option.seatsAvailable} of ${option.seatsTotal} seats left`
-                        : 'Private ride'}
-                    </Text>
+                    {option.mode === 'sharing' ? (
+                      <View style={[styles.badge, styles.seatsBadge]}>
+                        <Text style={styles.seatsBadgeText}>
+                          {option.seatsAvailable}/{option.seatsTotal} free
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.badge, styles.privateBadge]}>
+                        <Text style={styles.privateBadgeText}>Private</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
-                {active ? <Ionicons name="checkmark-circle" size={22} color="#11804B" /> : null}
+                <View style={styles.fareColumn}>
+                  <Text style={styles.fare}>₹{option.baseFare}</Text>
+                  {active ? <Ionicons name="checkmark-circle" size={18} color="#11804B" style={{ marginTop: 4 }} /> : null}
+                </View>
               </View>
+
+              {/* ── Row 2: Google Maps route info ── */}
+              {ri ? (
+                <View style={styles.routeInfoRow}>
+                  <Ionicons name={isGoogle ? 'navigate' : 'map-outline'} size={11} color={isGoogle ? '#4285F4' : '#6B8A95'} />
+                  <Text style={[styles.routeInfoText, isGoogle && styles.routeInfoGoogle]}>
+                    {ri.distanceKm} km  •  {ri.trafficMin} min in traffic
+                    {isGoogle ? '  · Google Maps' : '  · Estimated'}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* ── Row 3: Departure → Drop ── */}
               <View style={styles.rideInfoRow}>
-                <Text style={styles.rideTime}>Departure {option.departureTime}</Text>
-                <Text style={styles.rideEta}>Reach in {option.totalTravelMinutes ?? option.etaMinutes} min</Text>
+                <View style={styles.timeRow}>
+                  <Ionicons name="time-outline" size={13} color="#3A6070" />
+                  <Text style={styles.rideTime}>
+                    {option.departureTime}{option.estimatedDropTime ? ` → ${option.estimatedDropTime}` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.rideEta}>{option.etaMinutes} min pickup</Text>
               </View>
-              <Text style={styles.rideRoute}>Includes pickup + trip time</Text>
+
+              {/* ── Row 4: Driver + Vehicle ── */}
               {option.driverName ? (
                 <View style={styles.rideInfoRow}>
-                  <Text style={styles.rideRoute}>Driver: {option.driverName}</Text>
-                  <Text style={styles.rideRoute}>Rating: {option.driverRating ?? '-'}</Text>
+                  <Text style={styles.driverText}>
+                    👤 {option.driverName}  ·  ⭐ {option.driverRating}
+                  </Text>
+                  <Text style={styles.vehicleText}>
+                    {option.vehicleColor}  {option.vehicleNumber}
+                  </Text>
                 </View>
               ) : null}
-              {option.vehicleNumber ? (
-                <View style={styles.rideInfoRow}>
-                  <Text style={styles.rideRoute}>Vehicle: {option.vehicleNumber}</Text>
-                  <Text style={styles.rideRoute}>{option.vehicleColor || 'Color N/A'}</Text>
-                </View>
-              ) : null}
-              <View style={styles.rideInfoRow}>
-                <Text style={styles.rideRoute}>Within {option.distanceFromPickupKm} km</Text>
-                <Text style={styles.rideRoute}>{option.pricingTag || 'Standard fare'}</Text>
-              </View>
+
+              {/* ── Row 5: Sharing onboard ── */}
               {option.mode === 'sharing' ? (
-                <Text style={styles.rideRoute}>
-                  Onboard: M {option.maleOnboard ?? 0} | F {option.femaleOnboard ?? 0}
-                </Text>
+                <View style={styles.onboardRow}>
+                  <Text style={styles.onboardLabel}>Onboard:</Text>
+                  <View style={styles.genderChipMale}>
+                    <Text style={styles.genderChipText}>♂ {option.maleOnboard ?? 0} M</Text>
+                  </View>
+                  <View style={styles.genderChipFemale}>
+                    <Text style={styles.genderChipText}>♀ {option.femaleOnboard ?? 0} F</Text>
+                  </View>
+                  {typeof option.poolingMatchPercent === 'number' ? (
+                    <Text style={styles.matchText}>{option.poolingMatchPercent}% match</Text>
+                  ) : null}
+                </View>
               ) : null}
-              {option.mode === 'sharing' && typeof option.poolingMatchPercent === 'number' ? (
-                <Text style={styles.rideRoute}>Pooling match chance: {option.poolingMatchPercent}%</Text>
-              ) : null}
-              {option.estimatedDropTime ? (
-                <Text style={styles.rideRoute}>Estimated drop: {option.estimatedDropTime}</Text>
-              ) : null}
-              <View style={styles.rideBottom}>
-                <Text style={styles.fare}>Rs {option.baseFare}</Text>
-                <Text style={styles.seats}>{active ? 'Selected' : 'Tap to select'}</Text>
+
+              {/* ── Row 6: Pricing tag + pickup distance ── */}
+              <View style={styles.rideBottomMeta}>
+                <Text style={styles.pricingTagText}>{option.pricingTag ?? '🟢 Standard fare'}</Text>
+                <Text style={styles.rideRoute}>{option.distanceFromPickupKm} km away</Text>
               </View>
+
             </Pressable>
           );
         })}
@@ -1180,13 +1214,112 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fare: {
-    fontSize: 19,
+    fontSize: 21,
     fontFamily: Fonts.rounded,
-    color: '#0F2530',
+    color: '#0B2330',
+    fontWeight: '800',
+  },
+  fareColumn: {
+    alignItems: 'flex-end',
+    gap: 2,
   },
   seats: {
     color: '#607380',
     fontSize: 12,
+  },
+  routeInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EEF5F9',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  routeInfoText: {
+    fontSize: 11,
+    color: '#5A7D8A',
+    fontWeight: '600',
+  },
+  routeInfoGoogle: {
+    color: '#2667C9',
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  seatsBadge: {
+    backgroundColor: '#D9F2E6',
+  },
+  seatsBadgeText: {
+    color: '#156A3E',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  privateBadge: {
+    backgroundColor: '#E4EDFF',
+  },
+  privateBadgeText: {
+    color: '#2346A8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  driverText: {
+    color: '#304C58',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  vehicleText: {
+    color: '#506370',
+    fontSize: 11,
+  },
+  onboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  onboardLabel: {
+    color: '#4A6370',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  genderChipMale: {
+    backgroundColor: '#DDEEFF',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  genderChipFemale: {
+    backgroundColor: '#FFDDED',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  genderChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E3A49',
+  },
+  matchText: {
+    marginLeft: 'auto' as any,
+    fontSize: 11,
+    color: '#11804B',
+    fontWeight: '700',
+  },
+  rideBottomMeta: {
+    marginTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pricingTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2E4A57',
   },
   seatPanel: {
     marginHorizontal: 16,
