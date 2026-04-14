@@ -339,7 +339,7 @@ async function connectDatabase() {
     console.log('Neon PostgreSQL connected and tables initialized.');
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.error(\`PostgreSQL connection failed: \${reason}\`);
+    console.error(`PostgreSQL connection failed: ${reason}`);
   }
 }
 
