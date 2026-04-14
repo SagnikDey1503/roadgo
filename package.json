@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "backend": "node ./backend/server.mjs",
+    "seed": "node ./backend/seed.mjs",
     "dev:all": "node ./backend/server.mjs & expo start",
     "build:apk": "npx eas-cli@latest build --platform android --profile apk",
     "build:aab": "npx eas-cli@latest build --platform android --profile production"

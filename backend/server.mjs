@@ -445,25 +445,57 @@ function seatMapFor(seed) {
   return { seats, occupiedCount };
 }
 
-function calcBaseFare(mode, distanceKm, carType) {
+// Realistic Ola/Uber-style pricing: base + per-km + per-minute (traffic duration)
+function calcBaseFare(mode, distanceKm, trafficMin, carType) {
   if (mode === 'solo') {
-    const multipliers = {
-      auto: 62,
-      mini: 84,
-      sedan: 108,
-      suv: 138,
+    const pricing = {
+      auto:  { base: 25, perKm: 14.0, perMin: 1.50 },
+      mini:  { base: 40, perKm: 13.0, perMin: 1.50 },
+      sedan: { base: 60, perKm: 17.0, perMin: 2.00 },
+      suv:   { base: 90, perKm: 22.0, perMin: 2.50 },
     };
-    const multiplier = multipliers[carType] || 84;
-    return Math.round(55 + distanceKm * multiplier * 0.36);
+    const p = pricing[carType] || pricing.mini;
+    return Math.round(p.base + distanceKm * p.perKm + trafficMin * p.perMin);
   }
 
-  const sharedMultiplier = {
-    '4-seater': 42,
-    '6-seater': 34,
-    auto: 29,
+  // Sharing: ~45% of equivalent solo — riders split the cost
+  const pricing = {
+    '4-seater': { base: 18, perKm: 7.5, perMin: 0.90 },
+    '6-seater': { base: 15, perKm: 6.5, perMin: 0.80 },
+    auto:        { base: 12, perKm: 6.0, perMin: 0.70 },
   };
-  const multiplier = sharedMultiplier[carType] || 36;
-  return Math.round(24 + distanceKm * multiplier * 0.25);
+  const p = pricing[carType] || pricing['4-seater'];
+  return Math.round(p.base + distanceKm * p.perKm + trafficMin * p.perMin);
+}
+
+function fareBreakdown(mode, distanceKm, trafficMin, carType, surgeFactor) {
+  if (mode === 'solo') {
+    const pricing = {
+      auto:  { base: 25, perKm: 14.0, perMin: 1.50 },
+      mini:  { base: 40, perKm: 13.0, perMin: 1.50 },
+      sedan: { base: 60, perKm: 17.0, perMin: 2.00 },
+      suv:   { base: 90, perKm: 22.0, perMin: 2.50 },
+    };
+    const p = pricing[carType] || pricing.mini;
+    return {
+      baseFare:    Math.round(p.base * surgeFactor),
+      distCharge:  Math.round(distanceKm * p.perKm * surgeFactor),
+      timeCharge:  Math.round(trafficMin  * p.perMin * surgeFactor),
+      surgeFactor: Number(surgeFactor.toFixed(2)),
+    };
+  }
+  const pricing = {
+    '4-seater': { base: 18, perKm: 7.5, perMin: 0.90 },
+    '6-seater': { base: 15, perKm: 6.5, perMin: 0.80 },
+    auto:        { base: 12, perKm: 6.0, perMin: 0.70 },
+  };
+  const p = pricing[carType] || pricing['4-seater'];
+  return {
+    baseFare:    Math.round(p.base * surgeFactor),
+    distCharge:  Math.round(distanceKm * p.perKm * surgeFactor),
+    timeCharge:  Math.round(trafficMin  * p.perMin * surgeFactor),
+    surgeFactor: Number(surgeFactor.toFixed(2)),
+  };
 }
 
 function hourDemandFactor(date) {
@@ -531,15 +563,18 @@ function buildSharedRides({ pickup, drop, travelDateTime, carType, sharingGender
       }
 
       const occupancyRate = seatMap.occupiedCount / seatMap.seats.length;
-      const demandFactor = hourDemandFactor(slotTime) + occupancyRate * 0.16 + (trafficFactor - 1) * 0.24;
+      const surgeFactor = hourDemandFactor(slotTime) + occupancyRate * 0.16 + (trafficFactor - 1) * 0.24;
       const jitter = 0.92 + hashToUnit(`${seed.id}-${formatTime(slotTime)}`) * 0.2;
-      const baseFare = Math.max(40, Math.round(calcBaseFare('sharing', routeDistance, seed.type) * demandFactor * jitter));
-      const pickupEta = Math.max(5, Math.round(distanceToPickup * 4 + 7));
-      const inRideMinutes = Math.round(routeMetrics.trafficMin + hashToUnit(seed.id) * 6);
+      const rawFare = calcBaseFare('sharing', routeDistance, routeMetrics.trafficMin, seed.type);
+      const fare = Math.max(35, Math.round(rawFare * surgeFactor * jitter));
+      // Pickup ETA: haversine distance from driver to pickup at ~18 km/h city speed
+      const pickupEta = Math.max(4, Math.round((distanceToPickup / 18) * 60 + 2));
+      const inRideMinutes = Math.round(routeMetrics.trafficMin + hashToUnit(seed.id) * 4);
       const totalTravelMinutes = pickupEta + inRideMinutes;
       const dropEstimate = new Date(slotTime);
       dropEstimate.setMinutes(dropEstimate.getMinutes() + inRideMinutes);
       const rideSeed = `${seed.id}-${formatTime(slotTime)}`;
+      const breakdown = fareBreakdown('sharing', routeDistance, routeMetrics.trafficMin, seed.type, surgeFactor * jitter);
 
       matching.push({
         rideId: rideSeed,
@@ -553,7 +588,14 @@ function buildSharedRides({ pickup, drop, travelDateTime, carType, sharingGender
         departureTime: formatTime(slotTime),
         etaMinutes: pickupEta,
         totalTravelMinutes,
-        baseFare,
+        baseFare: fare,
+        fareBreakdown: breakdown,
+        routeInfo: {
+          distanceKm: Number(routeDistance.toFixed(2)),
+          durationMin: Math.round(routeMetrics.durationMin),
+          trafficMin:  Math.round(routeMetrics.trafficMin),
+          source: routeMetrics.source,
+        },
         seatMap: seatMap.seats,
         maleOnboard,
         femaleOnboard,
@@ -563,7 +605,7 @@ function buildSharedRides({ pickup, drop, travelDateTime, carType, sharingGender
         vehicleNumber: formatVehicleNumber(rideSeed),
         vehicleColor: pickFrom(`${rideSeed}-color`, dummyVehicleColors),
         estimatedDropTime: formatTime(dropEstimate),
-        pricingTag: trafficFactor > 1.15 ? 'Peak traffic' : 'Standard fare',
+        pricingTag: trafficFactor > 1.2 ? '🔴 Peak traffic surge' : surgeFactor > 1.1 ? '🟡 Mild surge' : '🟢 Standard fare',
         poolingMatchPercent: 58 + Math.round(hashToUnit(`${rideSeed}-pool`) * 38),
         policyHint: pickFrom(`${rideSeed}-policy`, policyHighlights),
       });
@@ -591,35 +633,56 @@ function buildSoloRides({ pickup, drop, travelDateTime, carType, routeMetrics })
   const trafficFactor = Math.max(1, routeMetrics.trafficMin / Math.max(1, routeMetrics.durationMin));
   const allTypes = ['auto', 'mini', 'sedan', 'suv'];
   const types = allTypes.includes(carType) ? [carType] : allTypes;
+
+  // Realistic Mumbai minimums (Ola/Uber parity)
   const minimumByType = {
-    auto: 95,
-    mini: 140,
-    sedan: 190,
-    suv: 250,
+    auto:  50,
+    mini:  80,
+    sedan: 120,
+    suv:   180,
+  };
+
+  // Nearby driver distances — slightly different per type to feel realistic
+  const driverProximityKm = {
+    auto:  0.4 + Math.random() * 0.6,
+    mini:  0.5 + Math.random() * 0.8,
+    sedan: 0.7 + Math.random() * 1.0,
+    suv:   1.0 + Math.random() * 1.2,
   };
 
   return types.map((type, index) => {
-    const typeSeed = `${type}-${travelDateTime.toISOString()}`;
-    const surge =
-      hourDemandFactor(travelDateTime) + (trafficFactor - 1) * 0.35 + hashToUnit(`${typeSeed}-surge`) * 0.08;
-    const minimumFare = minimumByType[type] || 140;
-    const baseFare = Math.max(minimumFare, Math.round(calcBaseFare('solo', routeDistance, type) * surge));
-    const pickupEta = Math.max(2, Math.round(3 + index * 2 + hashToUnit(`${typeSeed}-eta`) * 3));
-    const inRideMinutes = Math.round(routeMetrics.trafficMin + index * 2);
+    const typeSeed   = `${type}-${travelDateTime.toISOString()}`;
+    const surgeFactor = hourDemandFactor(travelDateTime) + (trafficFactor - 1) * 0.35 + hashToUnit(`${typeSeed}-surge`) * 0.08;
+    const minimumFare = minimumByType[type] || 80;
+    const rawFare     = calcBaseFare('solo', routeDistance, routeMetrics.trafficMin, type);
+    const baseFare    = Math.max(minimumFare, Math.round(rawFare * surgeFactor));
+    const driverKm    = driverProximityKm[type] || 0.8;
+    // ETA = driver travels to pickup at ~22 km/h average city speed
+    const pickupEta   = Math.max(2, Math.round((driverKm / 22) * 60 + 1));
+    const inRideMinutes    = Math.round(routeMetrics.trafficMin);
     const totalTravelMinutes = pickupEta + inRideMinutes;
-    const dropEstimate = new Date(travelDateTime);
+    const dropEstimate  = new Date(travelDateTime);
     dropEstimate.setMinutes(dropEstimate.getMinutes() + inRideMinutes);
+    const breakdown = fareBreakdown('solo', routeDistance, routeMetrics.trafficMin, type, surgeFactor);
+
     return {
       rideId: `solo-${type}`,
-      provider: `RoadGo ${type.toUpperCase()}`,
+      provider: `RoadGo ${type.charAt(0).toUpperCase() + type.slice(1)}`,
       mode: 'solo',
       carType: type,
       etaMinutes: pickupEta,
       totalTravelMinutes,
       baseFare,
+      fareBreakdown: breakdown,
+      routeInfo: {
+        distanceKm: Number(routeDistance.toFixed(2)),
+        durationMin: Math.round(routeMetrics.durationMin),
+        trafficMin:  Math.round(routeMetrics.trafficMin),
+        source: routeMetrics.source,
+      },
       seatsTotal: type === 'auto' ? 3 : 4,
       seatsAvailable: type === 'auto' ? 2 : 3,
-      distanceFromPickupKm: Number((0.35 + index * 0.35 + hashToUnit(typeSeed) * 0.2).toFixed(2)),
+      distanceFromPickupKm: Number(driverKm.toFixed(2)),
       departureTime: formatTime(travelDateTime),
       seatMap: null,
       driverName: pickFrom(`${typeSeed}-driver`, dummyDriverNames),
@@ -627,7 +690,7 @@ function buildSoloRides({ pickup, drop, travelDateTime, carType, routeMetrics })
       vehicleNumber: formatVehicleNumber(typeSeed),
       vehicleColor: pickFrom(`${typeSeed}-color`, dummyVehicleColors),
       estimatedDropTime: formatTime(dropEstimate),
-      pricingTag: surge > 1.12 ? 'Dynamic private fare' : 'Private fare',
+      pricingTag: trafficFactor > 1.2 ? '🔴 Peak traffic surge' : surgeFactor > 1.12 ? '🟡 Mild surge' : '🟢 Standard fare',
       policyHint: pickFrom(`${typeSeed}-policy`, policyHighlights),
     };
   });
